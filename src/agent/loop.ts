@@ -3,6 +3,17 @@ import client from "../llm/openrouter";
 import { tools, getTool } from "../tools/registry";
 import { toJsonSchema } from "../utils/schema";
 
+const SYSTEM_PROMPT = `
+You are a coding agent that helps users understand and modify codebases.
+
+Tool selection rules:
+- If the user asks where a specific symbol, function, class, variable, or text appears, use search_files first.
+- If you need to understand the project structure, use list_directory.
+- If you know the exact file you need to inspect, use read_file.
+- Don't read files unnecessarily.
+- Don't explore files when search_files can answer the question.
+- Use the minimum number of tool calls necessary.
+`;
 const MAX_ITERATIONS = 10;
 
 export async function runAgent(userMessage: string) {
@@ -17,7 +28,7 @@ export async function runAgent(userMessage: string) {
     const response = await client.messages.create({
       model: "qwen/qwen3-coder",
       max_tokens: 2000,
-
+      system: SYSTEM_PROMPT,
       tools: tools.map((tool) => ({
         name: tool.name,
         description: tool.description,
