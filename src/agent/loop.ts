@@ -16,6 +16,24 @@ Tool selection rules:
 `;
 const MAX_ITERATIONS = 10;
 
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
+
+async function askForApproval(): Promise<boolean> {
+  const rl = readline.createInterface({
+    input,
+    output,
+  });
+
+  try {
+    const answer = await rl.question("Allow this modification? (y/n): ");
+
+    return answer.trim().toLowerCase() === "y";
+  } finally {
+    rl.close();
+  }
+}
+
 export async function runAgent(userMessage: string) {
   const messages: Anthropic.MessageParam[] = [
     {
@@ -74,6 +92,27 @@ export async function runAgent(userMessage: string) {
       }
 
       try {
+        const requiresApproval = ["edit_file", "write_file"].includes(
+          tool.name,
+        );
+
+        if (requiresApproval) {
+          console.log("\n⚠️ Agent wants to modify a file:");
+          console.log(block.input);
+
+          const approved = await askForApproval();
+
+          if (!approved) {
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: "User denied this modification.Do not attempt another modification on this file.\nExplain what would have been changed instead.",
+              is_error: true,
+            });
+
+            continue;
+          }
+        }
         const result = await tool.call(block.input);
 
         toolResults.push({
