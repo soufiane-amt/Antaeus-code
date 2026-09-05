@@ -5,4 +5,5 @@ export interface Tool {
   description: string;
   inputSchema: z.ZodType;
   call(input: unknown): Promise<string>;
+  isConcurrencySafe: boolean;
 }

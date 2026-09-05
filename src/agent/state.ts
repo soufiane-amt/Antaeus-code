@@ -5,8 +5,8 @@ export interface AgentState {
   lastTool?: string;
 }
 
-export const MAX_ITERATIONS = 10;
-export const MAX_TOOL_CALLS = 20;
+export const MAX_ITERATIONS = 30;
+export const MAX_TOOL_CALLS = 50;
 
 export type TaskState = {
   modifiedFiles: string[];

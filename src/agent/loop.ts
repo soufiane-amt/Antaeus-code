@@ -6,8 +6,10 @@ import { AgentState, MAX_ITERATIONS, MAX_TOOL_CALLS } from "./state";
 
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { truncateResult } from "../context/truncateResult";
 import { compressMessages } from "../context/compressMessages";
+import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
+import { saveMessage } from "./save";
+import { rl } from "..";
 
 const SYSTEM_PROMPT = `
 You are a coding agent that helps users understand and modify codebases.
@@ -38,27 +40,12 @@ Task completion rules:
 - Do not investigate Git history or staged changes unless the user explicitly asks about Git.
 `;
 async function askForApproval(): Promise<boolean> {
-  const rl = readline.createInterface({
-    input,
-    output,
-  });
+  const answer = await rl.question("Allow this action? (y/n): ");
 
-  try {
-    const answer = await rl.question("Allow this action? (y/n): ");
-    return answer.trim().toLowerCase() === "y";
-  } finally {
-    rl.close();
-  }
+  return answer.trim().toLowerCase() === "y";
 }
 
-export async function runAgent(userMessage: string) {
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: userMessage,
-    },
-  ];
-
+export async function runAgent(messages: Anthropic.MessageParam[]) {
   const state: AgentState = {
     iteration: 0,
     toolCalls: 0,
@@ -71,14 +58,15 @@ export async function runAgent(userMessage: string) {
     !state.completed
   ) {
     state.iteration++;
+
     const compressed = await compressMessages(messages);
 
-    console.log(
-      `\n--- Agent iteration ${state.iteration}/${MAX_ITERATIONS} ---`,
-    );
+    // console.log(
+    //   `\n--- Agent iteration ${state.iteration}/${MAX_ITERATIONS} ---`,
+    // );
 
-    const response = await client.messages.create({
-      model: "qwen/qwen3-coder",
+    const stream = client.messages.stream({
+      model: process.env.PRIMARY_MODEL || "qwen/qwen3-coder",
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
 
@@ -91,28 +79,43 @@ export async function runAgent(userMessage: string) {
       messages: compressed,
     });
 
-    console.log("BLOCKS:", response.content);
+    if (messages.length > 1 && messages?.[messages.length - 1] !== undefined) {
+      saveMessage({
+        role: "user",
+        content: messages[messages.length - 1]?.content,
+      });
+    }
 
+    stream.on("text", (text) => {
+      process.stdout.write(text);
+    });
+
+    const response = await stream.finalMessage();
+    console.log("\n");
     messages.push({
       role: "assistant",
       content: response.content,
     });
+    console.log("response: ", response);
+    saveMessage({ role: "assistant", content: response.content });
 
     const toolUseBlocks = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
 
-    // No tool call means the model has produced its final answer.
     if (toolUseBlocks.length === 0) {
-      state.completed = true;
+      const textBlocks = response.content.filter(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
 
-      return response.content;
+      return textBlocks.map((b) => b.text).join("\n");
     }
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
+    const executableToolCalls: ToolCall[] = [];
+
     for (const block of toolUseBlocks) {
-      // Stop before executing more tools.
       if (state.toolCalls >= MAX_TOOL_CALLS) {
         toolResults.push({
           type: "tool_result",
@@ -141,69 +144,55 @@ export async function runAgent(userMessage: string) {
       state.toolCalls++;
       state.lastTool = tool.name;
 
-      try {
-        const requiresApproval = [
-          "edit_file",
-          "write_file",
-          "run_command",
-        ].includes(tool.name);
+      const requiresApproval = [
+        "edit_file",
+        "write_file",
+        "run_command",
+        "web_search",
+      ].includes(tool.name);
 
-        if (requiresApproval) {
-          if (tool.name === "run_command") {
-            console.log("\n⚠️ Agent wants to run:");
-            console.log(`$ ${block.input.command}`);
-          } else {
-            console.log("\n⚠️ Agent wants to modify:");
-            console.log(block.input);
-          }
-
-          const approved = await askForApproval();
-
-          if (!approved) {
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content:
-                "The user denied this action. Do not attempt another command or modification.",
-              is_error: true,
-            });
-
-            continue;
-          }
+      if (requiresApproval) {
+        if (tool.name === "run_command") {
+          console.log("\n⚠️ Agent wants to run:");
+          console.log(`$ ${block.input.command}`);
+        } else {
+          console.log("\n⚠️ Agent wants to modify:");
+          console.log(block.input);
         }
 
-        const result = await tool.call(block.input);
-        const truncatedResult = truncateResult(result);
+        const approved = await askForApproval();
 
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: truncatedResult,
-        });
-      } catch (error) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: String(error),
-          is_error: true,
-        });
+        if (!approved) {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content:
+              "The user denied this action. Do not attempt another command or modification.",
+            is_error: true,
+          });
+
+          continue;
+        }
       }
+
+      executableToolCalls.push({
+        block,
+        tool,
+      });
     }
+
+    const batches = partitionIntoBatches(executableToolCalls);
+
+    const executedResults = await executeBatches(batches);
+
+    toolResults.push(...executedResults);
 
     messages.push({
       role: "user",
       content: toolResults,
     });
+    saveMessage({ role: "user", content: toolResults });
   }
 
-  // We only get here if a safety limit stopped the agent.
-  return [
-    {
-      type: "text",
-      text:
-        `Agent stopped because it reached a safety limit. ` +
-        `Iterations: ${state.iteration}/${MAX_ITERATIONS}, ` +
-        `tool calls: ${state.toolCalls}/${MAX_TOOL_CALLS}.`,
-    },
-  ];
+  return `Agent stopped because it reached a safety limit. Iterations: ${state.iteration}/${MAX_ITERATIONS}, tool calls: ${state.toolCalls}/${MAX_TOOL_CALLS}.`;
 }

@@ -7,6 +7,9 @@ import { editFileTool } from "./edit-file";
 import { runCommandTool } from "./run-command";
 import { gitDiffTool } from "./git_diff";
 import { verifyTool } from "./verify";
+import { subagentTool } from "./run_subagent";
+import webFetchTool from "./web-fetch";
+import webSearchTool from "./web_search";
 
 export const tools: Tool[] = [
   searchFilesTool,
@@ -17,6 +20,9 @@ export const tools: Tool[] = [
   runCommandTool,
   gitDiffTool,
   verifyTool,
+  subagentTool,
+  webFetchTool,
+  webSearchTool,
 ];
 
 export function getTool(name: string) {
