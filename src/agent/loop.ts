@@ -8,7 +8,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { compressMessages } from "../context/compressMessages";
 import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
-import { saveMessage } from "./save";
+import { saveMessage } from "./session";
 import { rl } from "..";
 
 const SYSTEM_PROMPT = `
@@ -45,7 +45,15 @@ async function askForApproval(): Promise<boolean> {
   return answer.trim().toLowerCase() === "y";
 }
 
-export async function runAgent(messages: Anthropic.MessageParam[]) {
+// Pass a sessionId to persist the conversation; subagents run without one.
+export async function runAgent(
+  messages: Anthropic.MessageParam[],
+  sessionId?: string,
+) {
+  const persist = (message: Anthropic.MessageParam) => {
+    if (sessionId) saveMessage(sessionId, message);
+  };
+
   const state: AgentState = {
     iteration: 0,
     toolCalls: 0,
@@ -79,13 +87,6 @@ export async function runAgent(messages: Anthropic.MessageParam[]) {
       messages: compressed,
     });
 
-    if (messages.length > 1 && messages?.[messages.length - 1] !== undefined) {
-      saveMessage({
-        role: "user",
-        content: messages[messages.length - 1]?.content,
-      });
-    }
-
     stream.on("text", (text) => {
       process.stdout.write(text);
     });
@@ -97,7 +98,7 @@ export async function runAgent(messages: Anthropic.MessageParam[]) {
       content: response.content,
     });
     console.log("response: ", response);
-    saveMessage({ role: "assistant", content: response.content });
+    persist({ role: "assistant", content: response.content });
 
     const toolUseBlocks = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
@@ -191,7 +192,7 @@ export async function runAgent(messages: Anthropic.MessageParam[]) {
       role: "user",
       content: toolResults,
     });
-    saveMessage({ role: "user", content: toolResults });
+    persist({ role: "user", content: toolResults });
   }
 
   return `Agent stopped because it reached a safety limit. Iterations: ${state.iteration}/${MAX_ITERATIONS}, tool calls: ${state.toolCalls}/${MAX_TOOL_CALLS}.`;
