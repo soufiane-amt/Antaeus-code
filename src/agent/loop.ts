@@ -8,6 +8,7 @@ import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
 import { saveMessage } from "./session";
 
 export const MODEL = process.env.PRIMARY_MODEL || "qwen/qwen3-coder";
+export const MAX_TOKENS = Number(process.env.MAX_TOKENS) || 2000;
 
 export const APPROVAL_TOOLS = [
   "edit_file",
@@ -141,7 +142,7 @@ async function loop(
     const stream = client.messages.stream(
       {
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
 
         tools: tools.map((tool) => ({

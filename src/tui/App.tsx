@@ -71,6 +71,16 @@ function bannerFor(chat: ChatSession): Item {
   };
 }
 
+// API errors carry a JSON body; show just its message
+function formatError(error: unknown): string {
+  if (error instanceof Anthropic.APIError) {
+    const body = error.error as { error?: { message?: string } } | undefined;
+    const message = body?.error?.message ?? error.message;
+    return `API error ${error.status ?? ""}: ${message}`.replace(/\s+/g, " ");
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 function countTokens(messages: Anthropic.MessageParam[]): number {
   return messages.length > 0 ? estimateTokens(messages) : 0;
 }
@@ -195,7 +205,7 @@ export function App({ chat }: { chat: ChatSession }) {
         push({
           type: "error",
           id: nextId(),
-          text: error instanceof Error ? error.message : String(error),
+          text: formatError(error),
         });
       }
     } finally {
