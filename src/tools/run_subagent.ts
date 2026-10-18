@@ -1,24 +1,17 @@
 import { z } from "zod";
 import { Tool } from "./types";
 import Anthropic from "@anthropic-ai/sdk";
-import { runAgent } from "../agent/loop";
+import { getSubagentEvents, runAgent } from "../agent/loop";
+import { log } from "../utils/logger";
 
-async function runSubagent(
-  prompt: string,
-  parentAbortSignal?: AbortSignal,
-): Promise<string> {
-  // Create a child abort controller linked to the parent
-  const childAbort = new AbortController();
-  if (parentAbortSignal) {
-    parentAbortSignal.addEventListener("abort", () => childAbort.abort());
-  }
-
-  // Fresh messages, but shared everything else
+async function runSubagent(prompt: string): Promise<string> {
+  // Fresh messages, but the same UI for approvals and tool activity.
+  // No sessionId, so the subagent's conversation is not persisted.
   const subagentMessages: Anthropic.MessageParam[] = [
     { role: "user", content: prompt },
   ];
 
-  return runAgent(subagentMessages);
+  return runAgent(subagentMessages, { events: getSubagentEvents() });
 }
 const subagentTool: Tool = {
   name: "subagent",
@@ -29,11 +22,12 @@ const subagentTool: Tool = {
   inputSchema: z.object({
     prompt: z.string().describe("The task for the subagent to perform"),
   }),
+  isConcurrencySafe: false,
   async call(input) {
-    const prompt = input.prompt as string;
-    console.log("  [subagent] Starting...");
+    const { prompt } = input as { prompt: string };
+    log("Subagent started");
     const result = await runSubagent(prompt);
-    console.log("  [subagent] Done.");
+    log("Subagent finished");
     return result;
   },
 };

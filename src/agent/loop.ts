@@ -3,13 +3,41 @@ import client from "../llm/openrouter";
 import { tools, getTool } from "../tools/registry";
 import { toJsonSchema } from "../utils/schema";
 import { AgentState, MAX_ITERATIONS, MAX_TOOL_CALLS } from "./state";
-
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 import { compressMessages } from "../context/compressMessages";
 import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
 import { saveMessage } from "./session";
-import { rl } from "..";
+
+export const MODEL = process.env.PRIMARY_MODEL || "qwen/qwen3-coder";
+
+export const APPROVAL_TOOLS = [
+  "edit_file",
+  "write_file",
+  "run_command",
+  "web_search",
+];
+
+export interface ToolEvent {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  // 0 for the main agent, 1+ for subagents
+  depth: number;
+}
+
+// How the agent talks to whatever UI is driving it.
+export interface AgentEvents {
+  onTextDelta?(text: string): void;
+  onAssistantMessage?(text: string): void;
+  onToolStart?(tool: ToolEvent): void;
+  onToolEnd?(tool: ToolEvent, result: string, isError: boolean): void;
+  requestApproval(tool: ToolEvent): Promise<boolean>;
+  signal?: AbortSignal;
+}
+
+export interface RunOptions {
+  sessionId?: string;
+  events: AgentEvents;
+}
 
 const SYSTEM_PROMPT = `
 You are a coding agent that helps users understand and modify codebases.
@@ -39,139 +67,168 @@ Task completion rules:
 - Do not repeat a tool call with the same arguments unless the previous call failed.
 - Do not investigate Git history or staged changes unless the user explicitly asks about Git.
 `;
-async function askForApproval(): Promise<boolean> {
-  const answer = await rl.question("Allow this action? (y/n): ");
 
-  return answer.trim().toLowerCase() === "y";
+// The events of the agent run currently in progress, so the subagent tool
+// can route its approvals and tool activity to the same UI.
+let activeEvents: AgentEvents | undefined;
+let depth = 0;
+
+export function getSubagentEvents(): AgentEvents {
+  const parent = activeEvents;
+  return {
+    onToolStart: parent?.onToolStart?.bind(parent),
+    onToolEnd: parent?.onToolEnd?.bind(parent),
+    requestApproval: (tool) =>
+      parent ? parent.requestApproval(tool) : Promise.resolve(false),
+    signal: parent?.signal,
+  } as AgentEvents;
 }
 
-// Pass a sessionId to persist the conversation; subagents run without one.
+function toToolEvent(block: Anthropic.ToolUseBlock): ToolEvent {
+  return {
+    id: block.id,
+    name: block.name,
+    input: (block.input ?? {}) as Record<string, unknown>,
+    depth: depth - 1,
+  };
+}
+
 export async function runAgent(
   messages: Anthropic.MessageParam[],
-  sessionId?: string,
-) {
+  { sessionId, events }: RunOptions,
+): Promise<string> {
   const persist = (message: Anthropic.MessageParam) => {
     if (sessionId) saveMessage(sessionId, message);
   };
 
+  const previousEvents = activeEvents;
+  activeEvents = events;
+  depth++;
+
+  try {
+    return await loop(messages, events, persist);
+  } finally {
+    depth--;
+    activeEvents = previousEvents;
+  }
+}
+
+async function loop(
+  messages: Anthropic.MessageParam[],
+  events: AgentEvents,
+  persist: (message: Anthropic.MessageParam) => void,
+): Promise<string> {
   const state: AgentState = {
     iteration: 0,
     toolCalls: 0,
     completed: false,
   };
+  const signal = events.signal;
 
   while (
     state.iteration < MAX_ITERATIONS &&
     state.toolCalls < MAX_TOOL_CALLS &&
     !state.completed
   ) {
+    if (signal?.aborted) {
+      return "Interrupted.";
+    }
+
     state.iteration++;
 
     const compressed = await compressMessages(messages);
 
-    // console.log(
-    //   `\n--- Agent iteration ${state.iteration}/${MAX_ITERATIONS} ---`,
-    // );
+    const stream = client.messages.stream(
+      {
+        model: MODEL,
+        max_tokens: 2000,
+        system: SYSTEM_PROMPT,
 
-    const stream = client.messages.stream({
-      model: process.env.PRIMARY_MODEL || "qwen/qwen3-coder",
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
+        tools: tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: toJsonSchema(tool.inputSchema),
+        })),
 
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: toJsonSchema(tool.inputSchema),
-      })),
-
-      messages: compressed,
-    });
+        messages: compressed,
+      },
+      signal ? { signal } : undefined,
+    );
 
     stream.on("text", (text) => {
-      process.stdout.write(text);
+      events.onTextDelta?.(text);
     });
 
     const response = await stream.finalMessage();
-    console.log("\n");
     messages.push({
       role: "assistant",
       content: response.content,
     });
-    console.log("response: ", response);
     persist({ role: "assistant", content: response.content });
+
+    const text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+
+    events.onAssistantMessage?.(text);
 
     const toolUseBlocks = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
 
     if (toolUseBlocks.length === 0) {
-      const textBlocks = response.content.filter(
-        (block): block is Anthropic.TextBlock => block.type === "text",
-      );
-
-      return textBlocks.map((b) => b.text).join("\n");
+      return text;
     }
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
     const executableToolCalls: ToolCall[] = [];
 
-    for (const block of toolUseBlocks) {
-      if (state.toolCalls >= MAX_TOOL_CALLS) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content:
-            "Tool call limit reached. Stop using tools and provide the best final answer.",
-          is_error: true,
-        });
+    const reject = (block: Anthropic.ToolUseBlock, content: string) => {
+      const event = toToolEvent(block);
+      events.onToolStart?.(event);
+      events.onToolEnd?.(event, content, true);
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content,
+        is_error: true,
+      });
+    };
 
+    for (const block of toolUseBlocks) {
+      if (signal?.aborted) {
+        reject(block, "The user interrupted the agent before this tool ran.");
+        continue;
+      }
+
+      if (state.toolCalls >= MAX_TOOL_CALLS) {
+        reject(
+          block,
+          "Tool call limit reached. Stop using tools and provide the best final answer.",
+        );
         continue;
       }
 
       const tool = getTool(block.name);
 
       if (!tool) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: `Unknown tool: ${block.name}`,
-          is_error: true,
-        });
-
+        reject(block, `Unknown tool: ${block.name}`);
         continue;
       }
 
       state.toolCalls++;
       state.lastTool = tool.name;
 
-      const requiresApproval = [
-        "edit_file",
-        "write_file",
-        "run_command",
-        "web_search",
-      ].includes(tool.name);
-
-      if (requiresApproval) {
-        if (tool.name === "run_command") {
-          console.log("\n⚠️ Agent wants to run:");
-          console.log(`$ ${block.input.command}`);
-        } else {
-          console.log("\n⚠️ Agent wants to modify:");
-          console.log(block.input);
-        }
-
-        const approved = await askForApproval();
+      if (APPROVAL_TOOLS.includes(tool.name)) {
+        const approved = await events.requestApproval(toToolEvent(block));
 
         if (!approved) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content:
-              "The user denied this action. Do not attempt another command or modification.",
-            is_error: true,
-          });
-
+          reject(
+            block,
+            "The user denied this action. Do not attempt another command or modification.",
+          );
           continue;
         }
       }
@@ -184,9 +241,25 @@ export async function runAgent(
 
     const batches = partitionIntoBatches(executableToolCalls);
 
-    const executedResults = await executeBatches(batches);
+    const executedResults = await executeBatches(batches, {
+      onToolStart: (call) => events.onToolStart?.(toToolEvent(call.block)),
+      onToolEnd: (call, result) =>
+        events.onToolEnd?.(
+          toToolEvent(call.block),
+          typeof result.content === "string"
+            ? result.content
+            : JSON.stringify(result.content),
+          result.is_error === true,
+        ),
+    });
 
     toolResults.push(...executedResults);
+
+    // Keep results in the order the model asked for them
+    const order = toolUseBlocks.map((b) => b.id);
+    toolResults.sort(
+      (a, b) => order.indexOf(a.tool_use_id) - order.indexOf(b.tool_use_id),
+    );
 
     messages.push({
       role: "user",

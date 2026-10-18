@@ -2,7 +2,11 @@
   "name": "coding-agent",
   "version": "1.0.0",
   "main": "src/index.ts",
+  "type": "module",
   "scripts": {
+    "start": "tsx src/index.ts",
+    "start:plain": "tsx src/index.ts --plain",
+    "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -20,14 +24,19 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
     "@types/turndown": "^5.0.6",
+    "chalk": "^5.6.2",
+    "cli-highlight": "^2.1.11",
     "dotenv": "^17.4.2",
+    "ink": "^6.8.0",
     "openai": "^7.5.0",
+    "react": "^19.3.1",
     "turndown": "^7.2.4",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
+    "@types/react": "^19.3.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   }

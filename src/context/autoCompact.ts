@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import client from "../llm/openrouter";
+import { log } from "../utils/logger";
 
 const CONTEXT_WINDOW = 200_000; // Model's context limit in tokens
 const COMPACT_THRESHOLD = 0.8; // Compact when we hit 80% of the limit
@@ -16,7 +17,7 @@ async function autoCompact(
     return { messages, wasCompacted: false };
   }
 
-  console.log("  [compact] Context is large, summarizing conversation...");
+  log("Context is large, summarizing conversation...");
 
   // Ask the model to summarize
   const summaryResponse = await client.messages.create({

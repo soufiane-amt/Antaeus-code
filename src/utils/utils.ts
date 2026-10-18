@@ -64,7 +64,12 @@ export function partitionIntoBatches(toolCalls: ToolCall[]): Batch[] {
   return batches;
 }
 
-async function executeTool(call: ToolCall): Promise<ToolResultBlockParam> {
+export interface ExecutionHooks {
+  onToolStart?(call: ToolCall): void;
+  onToolEnd?(call: ToolCall, result: ToolResultBlockParam): void;
+}
+
+async function runTool(call: ToolCall): Promise<ToolResultBlockParam> {
   try {
     const result = await call.tool.call(call.block.input);
 
@@ -83,20 +88,31 @@ async function executeTool(call: ToolCall): Promise<ToolResultBlockParam> {
   }
 }
 
+async function executeTool(
+  call: ToolCall,
+  hooks: ExecutionHooks,
+): Promise<ToolResultBlockParam> {
+  hooks.onToolStart?.(call);
+  const result = await runTool(call);
+  hooks.onToolEnd?.(call, result);
+  return result;
+}
+
 export async function executeBatches(
   batches: Batch[],
+  hooks: ExecutionHooks = {},
 ): Promise<ToolResultBlockParam[]> {
   const allResults: ToolResultBlockParam[] = [];
 
   for (const batch of batches) {
     if (batch.concurrent) {
       const results = await Promise.all(
-        batch.tools.map((tool) => executeTool(tool)),
+        batch.tools.map((tool) => executeTool(tool, hooks)),
       );
       allResults.push(...results);
     } else {
       for (const call of batch.tools) {
-        const result = await executeTool(call);
+        const result = await executeTool(call, hooks);
         allResults.push(result);
       }
     }
