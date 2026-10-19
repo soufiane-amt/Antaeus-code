@@ -46,7 +46,7 @@ export async function runRepl(startRef?: string) {
   };
 
   console.log(
-    `Coding Agent started (session ${chat.id}). Type "/help" for commands, "exit" to quit.\n`,
+    `Antaeus started (session ${chat.id}). Type "/help" for commands, "exit" to quit.\n`,
   );
 
   try {

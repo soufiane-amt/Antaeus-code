@@ -1,15 +1,29 @@
-# Coding Agent
+# Antaeus
 
 A terminal coding agent with a full TUI, saved sessions, and tool approvals.
 
-## Usage
+## Install
 
 ```bash
-npm start                     # launch the TUI
-npm start -- --continue       # resume the most recent session
-npm start -- --resume <n|id>  # resume a specific session
-npm run start:plain           # plain line-based REPL (also used when stdin is not a TTY)
+npm install
+npm link        # puts the `antaeus` command on your PATH
 ```
+
+Put `OPENROUTER_API_KEY` (and optionally `PRIMARY_MODEL`, `CHEAP_MODEL`, `MAX_TOKENS`) in this repo's `.env`.
+A `.env` in the directory you run `antaeus` from takes precedence.
+
+## Usage
+
+Run it from inside any project:
+
+```bash
+antaeus                       # launch the TUI
+antaeus --continue            # resume the most recent session
+antaeus --resume <n|id>       # resume a specific session
+antaeus --plain               # plain line-based REPL (also used when stdin is not a TTY)
+```
+
+Inside this repo, `npm start` works too.
 
 Commands: `/new`, `/sessions`, `/resume [n|id]`, `/delete <n|id>`, `/session`, `/help`, `/exit`.
 
