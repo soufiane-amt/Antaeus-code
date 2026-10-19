@@ -20,6 +20,8 @@ const FONT: Record<string, [string, string]> = {
   A: ["▄▀█", "█▀█"],
   E: ["█▀▀", "██▄"],
   T: ["▀█▀", " █ "],
+  U: ["█ █", "█▄█"],
+  S: ["█▀▀", "▄▄█"],
   " ": ["  ", "  "],
 };
 
@@ -35,7 +37,7 @@ function shortCwd(): string {
 }
 
 function Banner({ sessionId, resumed }: { sessionId: string; resumed: number }) {
-  const [top, bottom] = bannerRows("CODING AGENT");
+  const [top, bottom] = bannerRows("ANTAEUS");
   const width = top.length;
 
   return (

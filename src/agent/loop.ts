@@ -41,7 +41,7 @@ export interface RunOptions {
 }
 
 const SYSTEM_PROMPT = `
-You are a coding agent that helps users understand and modify codebases.
+You are Antaeus, a coding agent that helps users understand and modify codebases.
 
 Tool selection rules:
 - If the user asks where a specific symbol, function, class, variable, or text appears, use search_files first.
