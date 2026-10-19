@@ -1,0 +1,186 @@
+{
+  "name": "antaeus",
+  "displayName": "Antaeus",
+  "description": "Chat with the Antaeus coding agent inside VS Code: streaming replies, tool approvals, and native diffs for proposed edits.",
+  "version": "0.1.0",
+  "publisher": "soufiane-amt",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soufiane-amt/Coding-Agent.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "antaeus",
+          "title": "Antaeus",
+          "icon": "media/antaeus.svg"
+        }
+      ]
+    },
+    "views": {
+      "antaeus": [
+        {
+          "type": "webview",
+          "id": "antaeus.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "antaeus.focus",
+        "title": "Open Chat",
+        "category": "Antaeus"
+      },
+      {
+        "command": "antaeus.openInEditor",
+        "title": "Open in New Tab",
+        "category": "Antaeus",
+        "icon": {
+          "light": "media/antaeus-light.svg",
+          "dark": "media/antaeus-dark.svg"
+        }
+      },
+      {
+        "command": "antaeus.newSession",
+        "title": "New Session",
+        "category": "Antaeus",
+        "icon": "$(add)"
+      },
+      {
+        "command": "antaeus.resumeSession",
+        "title": "Resume Session…",
+        "category": "Antaeus",
+        "icon": "$(history)"
+      },
+      {
+        "command": "antaeus.insertSelection",
+        "title": "Add Selection to Chat",
+        "category": "Antaeus"
+      },
+      {
+        "command": "antaeus.restart",
+        "title": "Restart Agent",
+        "category": "Antaeus",
+        "icon": "$(debug-restart)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "antaeus.newSession",
+          "when": "view == antaeus.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "antaeus.resumeSession",
+          "when": "view == antaeus.chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "antaeus.openInEditor",
+          "when": "view == antaeus.chat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "antaeus.restart",
+          "when": "view == antaeus.chat",
+          "group": "overflow"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "antaeus.openInEditor",
+          "when": "resourceScheme == file && activeWebviewPanelId != 'antaeus.panel'",
+          "group": "navigation@100"
+        },
+        {
+          "command": "antaeus.newSession",
+          "when": "activeWebviewPanelId == 'antaeus.panel'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "antaeus.resumeSession",
+          "when": "activeWebviewPanelId == 'antaeus.panel'",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "antaeus.insertSelection",
+          "when": "editorHasSelection",
+          "group": "antaeus@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "antaeus.focus",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape"
+      },
+      {
+        "command": "antaeus.insertSelection",
+        "key": "alt+k",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Antaeus",
+      "properties": {
+        "antaeus.command": {
+          "type": "string",
+          "default": "antaeus",
+          "description": "Command used to start the agent. A bare name is looked up on PATH, then through your login shell."
+        },
+        "antaeus.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments passed to the agent (--stdio is always added)."
+        },
+        "antaeus.autoOpenDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open a diff editor automatically when the agent asks to edit or write a file."
+        },
+        "antaeus.includeEditorContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attach the active file and selection to each prompt by default."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package --no-dependencies --skip-license -o antaeus.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "marked": "^15.0.0",
+    "typescript": "^5.7.2"
+  }
+}

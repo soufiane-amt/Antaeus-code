@@ -25,6 +25,13 @@ antaeus --plain               # plain line-based REPL (also used when stdin is n
 
 Inside this repo, `npm start` works too.
 
+`antaeus --stdio` runs headless and speaks newline-delimited JSON on stdin/stdout. Editor integrations use it.
+
+## VS Code extension
+
+The [vscode-extension/](vscode-extension/) folder holds a chat panel for VS Code with streaming replies,
+tool approvals, and native diffs for proposed edits. See its [README](vscode-extension/README.md) to build and install it.
+
 Commands: `/new`, `/sessions`, `/resume [n|id]`, `/delete <n|id>`, `/session`, `/help`, `/exit`.
 
 Keys: `esc` interrupts the agent, `tab` completes commands, `↑/↓` browses prompt history,

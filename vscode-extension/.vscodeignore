@@ -1,0 +1,8 @@
+src/**
+webview/**/*.ts
+node_modules/**
+**/*.map
+esbuild.mjs
+tsconfig.json
+*.vsix
+.vscode/**
