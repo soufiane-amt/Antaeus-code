@@ -38,6 +38,7 @@ function toTranscript(messages: Anthropic.MessageParam[]): TranscriptEntry[] {
 
   for (const message of messages) {
     const role = message.role;
+    if (role !== "user" && role !== "assistant") continue;
 
     if (typeof message.content === "string") {
       const text = message.content.replace(CONTEXT_TAG, "");
@@ -77,7 +78,7 @@ function formatError(error: unknown): string {
   if (error instanceof Anthropic.APIError) {
     const body = error.error as { error?: { message?: string } } | undefined;
     const message = body?.error?.message ?? error.message;
-    return `API error ${error.status ?? ""}: ${message}`.replace(/\s+/g, " ");
+    return `API error${error.status ? ` ${error.status}` : ""}: ${message}`.replace(/\s+/g, " ");
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -108,7 +109,7 @@ export async function runServer(startRef?: string): Promise<void> {
     tokens: tokens(),
   });
 
-  setLogSink((text) => send({ type: "log", text }));
+  setLogSink((text, level) => send({ type: "log", text, level }));
 
   const events = (signal: AbortSignal): AgentEvents => ({
     signal,
@@ -217,6 +218,10 @@ export async function runServer(startRef?: string): Promise<void> {
     }
   });
 
-  await new Promise<void>((resolve) => rl.on("close", resolve));
-  abort?.abort();
+  await new Promise<void>((resolve) =>
+    rl.on("close", () => {
+      abort?.abort();
+      resolve();
+    }),
+  );
 }

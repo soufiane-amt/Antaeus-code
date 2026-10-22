@@ -18,6 +18,7 @@ export type Item =
   | { type: "assistant"; id: string; text: string }
   | ToolItem
   | { type: "info"; id: string; text: string }
+  | { type: "warning"; id: string; text: string }
   | { type: "error"; id: string; text: string }
   | { type: "help"; id: string }
   | { type: "sessions"; id: string; sessions: SessionInfo[]; currentId: string };

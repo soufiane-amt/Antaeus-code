@@ -40,6 +40,14 @@ export function InfoMessage({ text }: { text: string }) {
   );
 }
 
+export function WarningMessage({ text }: { text: string }) {
+  return (
+    <Box marginTop={1}>
+      <Text color={theme.warning}>⚠ {text}</Text>
+    </Box>
+  );
+}
+
 export function ErrorMessage({ text }: { text: string }) {
   return (
     <Box marginTop={1}>

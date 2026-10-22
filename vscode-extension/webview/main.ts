@@ -46,7 +46,7 @@ type AgentEvent =
   | { type: "switched"; text: string; sessionId: string; history: HistoryEntry[]; tokens: number }
   | { type: "sessions"; sessions: SessionInfo[]; currentId: string }
   | { type: "command_result"; result: { type: string; text?: string } }
-  | { type: "log"; text: string }
+  | { type: "log"; text: string; level?: "info" | "warning" }
   | { type: "error"; text: string };
 
 type HostMessage =
@@ -258,6 +258,7 @@ let sessionId = "";
 let cwd = "";
 let tokens = 0;
 let running = false;
+let agentStarted = false;
 let startedAt = 0;
 let includeContext = true;
 let contextLabel: string | null = null;
@@ -319,7 +320,7 @@ function addAssistant(text: string): HTMLElement {
   return append(el);
 }
 
-function addNotice(text: string, kind: "info" | "error" | "log" = "info"): HTMLElement {
+function addNotice(text: string, kind: "info" | "warning" | "error" | "log" = "info"): HTMLElement {
   return append(h("div", { class: `notice ${kind}`, text }));
 }
 
@@ -755,6 +756,11 @@ function onAgentEvent(event: AgentEvent): void {
       cwd = event.cwd;
       tokens = event.tokens;
       renderHistory(event.history);
+      if (agentStarted) addNotice(`Agent restarted · session ${event.sessionId}`);
+      else if (event.history.length > 0) {
+        addNotice("Continuing your last conversation · /new starts a fresh one");
+      }
+      agentStarted = true;
       updateFooter();
       setRunning(false);
       input.disabled = false;
@@ -831,7 +837,7 @@ function onAgentEvent(event: AgentEvent): void {
       break;
 
     case "log":
-      addNotice(event.text, "log");
+      addNotice(event.text, event.level === "warning" ? "warning" : "log");
       break;
 
     case "error":

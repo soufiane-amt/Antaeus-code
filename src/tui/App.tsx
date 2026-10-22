@@ -76,7 +76,7 @@ function formatError(error: unknown): string {
   if (error instanceof Anthropic.APIError) {
     const body = error.error as { error?: { message?: string } } | undefined;
     const message = body?.error?.message ?? error.message;
-    return `API error ${error.status ?? ""}: ${message}`.replace(/\s+/g, " ");
+    return `API error${error.status ? ` ${error.status}` : ""}: ${message}`.replace(/\s+/g, " ");
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -120,7 +120,9 @@ export function App({ chat }: { chat: ChatSession }) {
   const push = (...newItems: Item[]) => setItems((prev) => [...prev, ...newItems]);
 
   useEffect(() => {
-    setLogSink((message) => push({ type: "info", id: nextId(), text: message }));
+    setLogSink((message, level) =>
+      push({ type: level === "warning" ? "warning" : "info", id: nextId(), text: message }),
+    );
   }, []);
 
   useInput(

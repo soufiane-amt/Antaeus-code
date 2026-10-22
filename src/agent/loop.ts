@@ -5,6 +5,7 @@ import { toJsonSchema } from "../utils/schema";
 import { AgentState, MAX_ITERATIONS, MAX_TOOL_CALLS } from "./state";
 import { compressMessages } from "../context/compressMessages";
 import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
+import { log } from "../utils/logger";
 import { saveMessage } from "./session";
 
 export const MODEL = process.env.PRIMARY_MODEL || "qwen/qwen3-coder";
@@ -85,6 +86,24 @@ export function getSubagentEvents(): AgentEvents {
   } as AgentEvents;
 }
 
+// Chat-template tokens some providers leak into the reply text (e.g. Qwen's <|im_end|>)
+const SPECIAL_TOKENS = /<\|(?:im_start|im_end|endoftext|eot_id|eom_id)\|>/g;
+
+function stripSpecialTokens(text: string): string {
+  return text.replace(SPECIAL_TOKENS, "");
+}
+
+// Leaves the reply untouched unless a leaked token is present, since some models
+// (Claude) tie their thinking blocks to the exact reply they produced.
+function cleanContent(content: Anthropic.ContentBlock[]): Anthropic.ContentBlock[] {
+  return content.flatMap<Anthropic.ContentBlock>((block) => {
+    if (block.type !== "text") return [block];
+    const text = stripSpecialTokens(block.text);
+    if (text === block.text) return [block];
+    return text.trim() ? [{ ...block, text }] : [];
+  });
+}
+
 function toToolEvent(block: Anthropic.ToolUseBlock): ToolEvent {
   return {
     id: block.id,
@@ -157,24 +176,36 @@ async function loop(
     );
 
     stream.on("text", (text) => {
-      events.onTextDelta?.(text);
+      const clean = stripSpecialTokens(text);
+      if (clean) events.onTextDelta?.(clean);
     });
 
     const response = await stream.finalMessage();
+    const content = cleanContent(response.content);
     messages.push({
       role: "assistant",
-      content: response.content,
+      content,
     });
-    persist({ role: "assistant", content: response.content });
+    persist({ role: "assistant", content });
 
-    const text = response.content
+    const text = content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
       .map((b) => b.text)
       .join("\n");
 
     events.onAssistantMessage?.(text);
 
-    const toolUseBlocks = response.content.filter(
+    // The reply ended early: out of output tokens, or declined by the model
+    const endedEarly =
+      response.stop_reason === "max_tokens"
+        ? `Reply cut off: it reached the MAX_TOKENS limit (${MAX_TOKENS}). ` +
+          "Raise MAX_TOKENS in .env, then restart the agent."
+        : response.stop_reason === "refusal"
+          ? "The model declined to continue this request."
+          : undefined;
+    if (endedEarly) log(endedEarly, "warning");
+
+    const toolUseBlocks = content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
 
@@ -197,6 +228,20 @@ async function loop(
         is_error: true,
       });
     };
+
+    // A tool call from a reply that ended early may have incomplete input, so
+    // don't run it. Stop here instead of retrying straight into the same limit.
+    if (endedEarly) {
+      for (const block of toolUseBlocks) {
+        reject(
+          block,
+          `Not run: your reply ended early (${response.stop_reason}), so this tool call may be incomplete.`,
+        );
+      }
+      messages.push({ role: "user", content: toolResults });
+      persist({ role: "user", content: toolResults });
+      return text;
+    }
 
     for (const block of toolUseBlocks) {
       if (signal?.aborted) {

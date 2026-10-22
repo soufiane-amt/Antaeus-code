@@ -31,6 +31,12 @@ export interface Shared {
   editorContext: EditorContextTracker;
 }
 
+// Remembers which session a chat was on, so it survives an extension host restart
+export interface SessionMemory {
+  load(): string | undefined;
+  save(sessionId: string): void;
+}
+
 function workspaceCwd(): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 }
@@ -50,6 +56,7 @@ export class ChatController implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private pickingSession = false;
   private uiReady = false;
+  private sessionId: string | undefined;
   private readonly queued: Record<string, unknown>[] = [];
 
   constructor(
@@ -57,7 +64,10 @@ export class ChatController implements vscode.Disposable {
     private readonly shared: Shared,
     private readonly isPanel: boolean,
     private readonly onFocus: (controller: ChatController) => void,
+    private readonly memory?: SessionMemory,
   ) {
+    this.sessionId = memory?.load();
+
     webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -81,9 +91,11 @@ export class ChatController implements vscode.Disposable {
     this.post({ type: "context", label: this.shared.editorContext.current()?.label ?? null });
   }
 
-  private startAgent(): void {
+  // A restart picks the current session back up, so it can be used to reload .env
+  private startAgent(resume = false): void {
     this.agent?.dispose();
     this.approvals.clear();
+    void this.shared.proposals.closeAll();
     const agent = new AgentProcess(
       this.cwd,
       this.shared.output,
@@ -96,10 +108,15 @@ export class ChatController implements vscode.Disposable {
     );
     this.agent = agent;
     this.post({ type: "starting" });
-    void agent.start();
+    void agent.start(resume && this.sessionId ? ["--resume", this.sessionId] : []);
   }
 
   private onAgentEvent(event: AgentEvent): void {
+    if (typeof event.sessionId === "string" && event.sessionId !== this.sessionId) {
+      this.sessionId = event.sessionId;
+      this.memory?.save(this.sessionId);
+    }
+
     switch (event.type) {
       case "approval_request": {
         const tool = event.tool as ToolEvent;
@@ -158,7 +175,8 @@ export class ChatController implements vscode.Disposable {
         });
         this.postContext();
         this.queued.splice(0).forEach((queued) => this.post(queued));
-        if (!this.agent) this.startAgent();
+        // Resumes the remembered session, if any
+        if (!this.agent) this.startAgent(true);
         return;
 
       case "focus":
@@ -202,7 +220,7 @@ export class ChatController implements vscode.Disposable {
         return;
 
       case "restart":
-        this.startAgent();
+        this.startAgent(true);
         return;
     }
   }
@@ -233,7 +251,7 @@ export class ChatController implements vscode.Disposable {
   }
 
   restart(): void {
-    this.startAgent();
+    this.startAgent(true);
   }
 
   // Both may arrive before the webview has loaded; queue them until it says ready

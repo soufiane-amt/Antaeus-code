@@ -37,6 +37,31 @@ export class ChatSession {
   switchTo(id: string): void {
     this.id = id;
     this.messages = loadSession(id);
+    this.closeInterruptedToolCalls();
+  }
+
+  // A run that was killed mid-tool leaves tool calls without results, which the
+  // API rejects on the next request. Record them as interrupted.
+  private closeInterruptedToolCalls(): void {
+    const last = this.messages[this.messages.length - 1];
+    if (last?.role !== "assistant" || typeof last.content === "string") return;
+
+    const calls = last.content.filter(
+      (block): block is Anthropic.ToolUseBlockParam => block.type === "tool_use",
+    );
+    if (calls.length === 0) return;
+
+    const results: Anthropic.MessageParam = {
+      role: "user",
+      content: calls.map((call) => ({
+        type: "tool_result" as const,
+        tool_use_id: call.id,
+        content: "Interrupted: the agent stopped before this tool finished.",
+        is_error: true,
+      })),
+    };
+    this.messages.push(results);
+    saveMessage(this.id, results);
   }
 
   startNew(): void {

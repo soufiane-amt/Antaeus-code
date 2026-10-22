@@ -1,10 +1,33 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { ChatController, Shared } from "./chatController";
+import { ChatController, SessionMemory, Shared } from "./chatController";
 import { EditorContextTracker } from "./editorContext";
 import { PROPOSAL_SCHEME, ProposalProvider } from "./proposals";
 
 const VIEW_ID = "antaeus.chat";
 const PANEL_TYPE = "antaeus.panel";
+
+// The sidebar's session id, kept in a file so it is on disk the moment it changes:
+// VS Code can kill the extension host (e.g. when memory runs out) at any time.
+function sidebarMemory(context: vscode.ExtensionContext): SessionMemory | undefined {
+  const dir = context.storageUri?.fsPath;
+  if (!dir) return undefined;
+  const file = path.join(dir, "sidebar-session");
+  return {
+    load() {
+      try {
+        return fs.readFileSync(file, "utf-8").trim() || undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    save(sessionId) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, sessionId);
+    },
+  };
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("Antaeus");
@@ -65,7 +88,13 @@ export function activate(context: vscode.ExtensionContext): void {
       {
         resolveWebviewView(view) {
           sidebar?.dispose();
-          const controller = new ChatController(view.webview, shared, false, setActive);
+          const controller = new ChatController(
+            view.webview,
+            shared,
+            false,
+            setActive,
+            sidebarMemory(context),
+          );
           sidebar = controller;
           view.onDidDispose(() => {
             controller.dispose();

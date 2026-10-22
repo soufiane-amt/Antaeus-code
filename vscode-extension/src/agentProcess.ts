@@ -79,9 +79,9 @@ export class AgentProcess implements vscode.Disposable {
     private readonly onExit: (message: string) => void,
   ) {}
 
-  async start(): Promise<void> {
+  async start(extraArgs: string[] = []): Promise<void> {
     const config = vscode.workspace.getConfiguration("antaeus");
-    const args = [...config.get<string[]>("args", []), "--stdio"];
+    const args = [...config.get<string[]>("args", []), ...extraArgs, "--stdio"];
 
     let launch: Launch;
     try {

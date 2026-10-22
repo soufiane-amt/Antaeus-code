@@ -439,6 +439,14 @@ button.link:hover {
   color: var(--err);
 }
 
+.notice.warning {
+  color: var(--warn);
+}
+
+.notice.warning::before {
+  content: "⚠ ";
+}
+
 .notice.log {
   font-style: italic;
 }

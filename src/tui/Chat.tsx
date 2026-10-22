@@ -4,7 +4,7 @@ import os from "node:os";
 import { COMMANDS } from "../agent/chat";
 import { MODEL } from "../agent/loop";
 import { SessionInfo } from "../agent/session";
-import { AssistantMessage, ErrorMessage, InfoMessage, UserMessage } from "./Message";
+import { AssistantMessage, ErrorMessage, InfoMessage, UserMessage, WarningMessage } from "./Message";
 import { gradient, theme } from "./theme";
 import { ToolCall } from "./ToolCall";
 import { Item } from "./types";
@@ -140,6 +140,8 @@ export function ChatItem({ item }: { item: Item }) {
       return <ToolCall item={item} />;
     case "info":
       return <InfoMessage text={item.text} />;
+    case "warning":
+      return <WarningMessage text={item.text} />;
     case "error":
       return <ErrorMessage text={item.text} />;
     case "help":
