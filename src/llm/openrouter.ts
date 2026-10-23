@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import "dotenv/config";
+import { config } from "../config";
 
 const client = new Anthropic({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api",
+  apiKey: config.apiKey,
+  baseURL: config.baseURL,
 });
 
 export default client;

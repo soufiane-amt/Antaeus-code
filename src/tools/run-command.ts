@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { config } from "../config";
 import type { Tool } from "./types";
 
 const execAsync = promisify(exec);
@@ -22,7 +23,7 @@ export const runCommandTool: Tool = {
 
     try {
       const { stdout, stderr } = await execAsync(command, {
-        timeout: 30_000,
+        timeout: config.commandTimeoutSeconds * 1000,
         maxBuffer: 1024 * 1024,
       });
 

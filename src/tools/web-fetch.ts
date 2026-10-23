@@ -2,6 +2,7 @@ import z from "zod";
 import { Tool } from "./types";
 import { htmlToMarkdown } from "../utils/utils";
 import client from "../llm/openrouter";
+import { config } from "../config";
 import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_WEB_CONTENT = 50_000;
@@ -43,7 +44,7 @@ const webFetchTool: Tool = {
         : text;
 
     const extraction = await client.messages.create({
-      model: process.env.CHEAP_MODEL || "qwen/qwen3-4b",
+      model: config.cheapModel,
       max_tokens: 2048,
       system:
         "Extract the relevant information from this web page based on the user's prompt. Be concise.",

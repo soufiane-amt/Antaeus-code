@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { config } from "../config";
 import client from "../llm/openrouter";
 import { log } from "../utils/logger";
 
-const CONTEXT_WINDOW = 200_000; // Model's context limit in tokens
+const CONTEXT_WINDOW = config.contextWindow; // Model's context limit in tokens
 const COMPACT_THRESHOLD = 0.8; // Compact when we hit 80% of the limit
 
 async function autoCompact(
@@ -21,8 +22,9 @@ async function autoCompact(
 
   // Ask the model to summarize
   const summaryResponse = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 2048,
+    model: config.compactModel,
+    // A summary doesn't need the full reply budget, and this request isn't streamed
+    max_tokens: Math.min(config.maxTokens, 8192),
     system:
       "Summarize this conversation between a user and a coding assistant. " +
       "Write in third person (say 'the user asked' and 'the assistant edited', not 'I'). " +

@@ -1,4 +1,5 @@
 import z from "zod";
+import { config } from "../config";
 import client from "../llm/openrouter";
 import { Tool } from "./types";
 
@@ -14,7 +15,7 @@ const webSearchTool: Tool = {
 
     // Make a separate API call with the server-side web search tool
     const response = await client.messages.create({
-      model: process.env.CHEAP_MODEL || "qwen/qwen3-coder",
+      model: config.cheapModel,
       max_tokens: 1024,
       system: "Perform the web search and return the results.",
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],

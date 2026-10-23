@@ -23,14 +23,20 @@ cp .env.example .env    # then put your OpenRouter key in .env
 npm link                # puts the `antaeus` command on your PATH
 ```
 
-Settings in `.env`:
+Settings in `.env` (all read in [src/config.ts](src/config.ts)):
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | (required) | Your [OpenRouter](https://openrouter.ai/keys) API key. |
+| `API_BASE_URL` | `https://openrouter.ai/api` | Any Anthropic-compatible Messages API endpoint. |
 | `PRIMARY_MODEL` | `qwen/qwen3-coder` | Model the agent runs on. Needs tool use support. |
-| `CHEAP_MODEL` | `qwen/qwen3-4b` | Model for helper tasks (web fetch summaries, web search). |
+| `CHEAP_MODEL` | `qwen/qwen3-4b` | Model for helper tasks (web search, web fetch summaries). |
+| `COMPACT_MODEL` | `PRIMARY_MODEL` | Model that summarizes the conversation when it nears the context window. |
 | `MAX_TOKENS` | `2000` | Maximum tokens per reply. If it's too low, replies are cut off and the agent warns you. |
+| `CONTEXT_WINDOW` | `200000` | The primary model's context window. The conversation is summarized at 80% of it. |
+| `MAX_ITERATIONS` | `30` | Most model calls per request before the agent stops. |
+| `MAX_TOOL_CALLS` | `50` | Most tool calls per request before the agent stops. |
+| `COMMAND_TIMEOUT` | `30` | Seconds a shell command may run before it's stopped. |
 
 A `.env` in the directory you run `antaeus` from takes precedence over this repo's `.env`.
 After changing `.env`, restart the agent.
@@ -66,6 +72,7 @@ build and install it.
 bin/antaeus.js        entry point for the `antaeus` command
 src/
   index.ts            parses flags and starts the TUI, REPL, or stdio server
+  config.ts           settings read from .env, with defaults
   server.ts           headless --stdio mode for editor integrations
   repl.ts             plain line-based interface
   agent/              agent loop, sessions, slash commands

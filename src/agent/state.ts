@@ -1,3 +1,5 @@
+import { config } from "../config";
+
 export interface AgentState {
   iteration: number;
   toolCalls: number;
@@ -5,8 +7,8 @@ export interface AgentState {
   lastTool?: string;
 }
 
-export const MAX_ITERATIONS = 30;
-export const MAX_TOOL_CALLS = 50;
+export const MAX_ITERATIONS = config.maxIterations;
+export const MAX_TOOL_CALLS = config.maxToolCalls;
 
 export type TaskState = {
   modifiedFiles: string[];

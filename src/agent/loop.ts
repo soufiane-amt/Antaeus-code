@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { config } from "../config";
 import client from "../llm/openrouter";
 import { tools, getTool } from "../tools/registry";
 import { toJsonSchema } from "../utils/schema";
@@ -8,8 +9,8 @@ import { executeBatches, partitionIntoBatches, ToolCall } from "../utils/utils";
 import { log } from "../utils/logger";
 import { saveMessage } from "./session";
 
-export const MODEL = process.env.PRIMARY_MODEL || "qwen/qwen3-coder";
-export const MAX_TOKENS = Number(process.env.MAX_TOKENS) || 2000;
+export const MODEL = config.primaryModel;
+export const MAX_TOKENS = config.maxTokens;
 
 export const APPROVAL_TOOLS = [
   "edit_file",
